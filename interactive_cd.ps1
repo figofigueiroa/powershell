@@ -1,38 +1,54 @@
 # Importar o módulo PSFzf
 Import-Module PSFzf
 
-# Função cd interativa
-function Invoke-InteractiveCD {
-    param([string]$Path)
+function Set-LocationInteractive {
+    param([Parameter(ValueFromRemainingArguments=$true)]$Path)
     
+    # If arguments are provided, use the standard cd behavior
     if ($Path) {
         Set-Location $Path
         return
     }
     
+    # Interactive directory navigation using FZF
     while ($true) {
-        # Obter diretórios incluindo ".."
-        $directories = @("..")
-        $directories += Get-ChildItem -Directory | Select-Object -ExpandProperty Name
+        # Get parent directory and all subdirectories
+        $parentDir = ".."
+        $subDirs = Get-ChildItem -Directory | Select-Object -ExpandProperty Name
+        $allDirs = @($parentDir) + $subDirs
         
-        # Usar fzf para seleção interativa
-        $selectedDir = $directories | 
-            Invoke-Fzf -Reverse -Preview "
-                `$previewPath = Join-Path -Path (Get-Location) -ChildPath '{}'
-                if ('{}' -eq '..') {
-                    `$previewPath = Split-Path -Parent -Path (Get-Location)
-                }
-                Write-Output `$previewPath
-                Write-Output ''
-                Get-ChildItem -Path `$previewPath -Force | Format-Table -AutoSize
-            "
+        # Create a preview script
+        $previewCmd = [System.IO.Path]::GetTempFileName() + ".ps1"
+        @"
+param(`$dir)
+`$currentPath = (Get-Location).Path
+if (`$dir -eq "..") {
+    `$fullPath = (Get-Item `$currentPath).Parent.FullName
+} else {
+    `$fullPath = Join-Path `$currentPath `$dir
+}
+Write-Output `$fullPath
+Write-Output ""
+Get-ChildItem -Path `$fullPath | Format-Table Name, LastWriteTime -AutoSize
+"@ | Set-Content -Path $previewCmd
         
-        if (-not $selectedDir) {
+        # Use FZF to let the user select a directory
+        $selectedDir = $allDirs | Out-String | fzf --reverse --preview "powershell -NoProfile -File $previewCmd {}"
+        
+        # Clean up
+        Remove-Item -Path $previewCmd -Force
+        
+        $selectedDir = $selectedDir.Trim()
+        
+        # Exit if no directory was selected
+        if ([string]::IsNullOrEmpty($selectedDir)) {
             return
         }
         
-        Set-Location $selectedDir -ErrorAction SilentlyContinue
+        # Change to the selected directory
+        Set-Location $selectedDir
     }
 }
-# Sobrescrever o comando cd
-Set-Alias -Name cd -Value Invoke-InteractiveCD -Option AllScope -Force
+
+# To use this function by typing 'cd', add this line:
+Set-Alias -Name cd -Value Set-LocationInteractive -Force -Option AllScope
