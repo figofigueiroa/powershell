@@ -1,7 +1,3 @@
-# Importar o módulo PSFzf
-Import-Module PSFzf
-
-# Função cd interativa
 function Invoke-InteractiveCD {
     param([string]$Path)
     
@@ -10,14 +6,19 @@ function Invoke-InteractiveCD {
         return
     }
     
+    # Define a altura como 50% da tela
+    $height = "50%"
+    
+    # Use uma única chamada ao fzf e processe a saída
+    $selectedDir = $null
     while ($true) {
         # Obter diretórios incluindo ".."
         $directories = @("..")
         $directories += Get-ChildItem -Directory | Select-Object -ExpandProperty Name
         
-        # Usar fzf para seleção interativa
+        # Chama fzf com a opção de altura e sem sair após a seleção
         $selectedDir = $directories | 
-            Invoke-Fzf -Reverse -Preview "
+            Invoke-Fzf -Reverse -Height $height -Preview "
                 `$previewPath = Join-Path -Path (Get-Location) -ChildPath '{}'
                 if ('{}' -eq '..') {
                     `$previewPath = Split-Path -Parent -Path (Get-Location)
@@ -27,12 +28,21 @@ function Invoke-InteractiveCD {
                 Get-ChildItem -Path `$previewPath -Force | Format-Table -AutoSize
             "
         
+        # Se não houver seleção, saia da função
         if (-not $selectedDir) {
             return
         }
         
+        # Muda para o diretório selecionado silenciosamente
+        $previousLocation = Get-Location
         Set-Location $selectedDir -ErrorAction SilentlyContinue
+        
+        # Verifica se o diretório mudou realmente (para evitar erros)
+        $currentLocation = Get-Location
+        if ($currentLocation.Path -eq $previousLocation.Path) {
+            # Se não conseguiu mudar o diretório, saia do loop
+            Write-Host "Não foi possível mudar para o diretório: $selectedDir" -ForegroundColor Red
+            return
+        }
     }
 }
-# Sobrescrever o comando cd
-Set-Alias -Name cd -Value Invoke-InteractiveCD -Option AllScope -Force
