@@ -52,3 +52,26 @@ Get-ChildItem -Path `$fullPath | Format-Table Name, LastWriteTime -AutoSize
 
 # To use this function by typing 'cd', add this line:
 Set-Alias -Name cd -Value Set-LocationInteractive -Force -Option AllScope
+
+function cd {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Path
+    )
+    if ($Path.Count -gt 0) {
+        Set-Location @Path
+        return
+    }
+    while ($true) {
+        $dirs = @("..") + (Get-ChildItem -Directory | Select-Object -ExpandProperty Name)
+        $dir = $dirs | fzf --reverse --preview {
+            param($selection)
+            $fullPath = Join-Path (Get-Location) $selection
+            Write-Host $fullPath
+            Write-Host
+            Get-ChildItem -Path $fullPath | Format-Wide -Column 1
+        }
+        if (-not $dir) { return }
+        Set-Location $dir
+    }
+}
