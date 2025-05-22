@@ -2,24 +2,32 @@
 Import-Module PSFzf
 
 function Set-LocationInteractive {
-    param([Parameter(ValueFromRemainingArguments=$true)]$Path)
-    
-    # If arguments are provided, use the standard cd behavior
-    if ($Path) {
-        Set-Location $Path
-        return
-    }
-    
-    # Interactive directory navigation using FZF
-    while ($true) {
-        # Get parent directory and all subdirectories
-        $parentDir = ".."
-        $subDirs = Get-ChildItem -Directory | Select-Object -ExpandProperty Name
-        $allDirs = @($parentDir) + $subDirs
-        
-        # Create a preview script
-        $previewCmd = [System.IO.Path]::GetTempFileName() + ".ps1"
-        @"
+    [CmdletBinding(DefaultParameterSetName='Path')]
+    param(
+        [Parameter(Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true, ParameterSetName='Path')]
+        [Alias('PSPath')]
+        [string[]]$Path,
+
+        [Parameter(ValueFromRemainingArguments=$true)]
+        $Args
+    )
+
+    process {
+        if ($PSCmdlet.ParameterSetName -eq 'Path' -and $Path) {
+            Set-Location @PSBoundParameters
+            return
+        }
+
+        # Interactive directory navigation using FZF
+        while ($true) {
+            # Get parent directory and all subdirectories
+            $parentDir = ".."
+            $subDirs = Get-ChildItem -Directory | Select-Object -ExpandProperty Name
+            $allDirs = @($parentDir) + $subDirs
+
+            # Create a preview script
+            $previewCmd = [System.IO.Path]::GetTempFileName() + ".ps1"
+            @"
 param(`$dir)
 `$currentPath = (Get-Location).Path
 if (`$dir -eq "..") {
@@ -31,22 +39,23 @@ Write-Output `$fullPath
 Write-Output ""
 Get-ChildItem -Path `$fullPath | Format-Table Name, LastWriteTime -AutoSize
 "@ | Set-Content -Path $previewCmd
-        
-        # Use FZF to let the user select a directory
-        $selectedDir = $allDirs | Out-String | fzf --reverse --preview "powershell -NoProfile -File $previewCmd {}"
-        
-        # Clean up
-        Remove-Item -Path $previewCmd -Force
-        
-        $selectedDir = $selectedDir.Trim()
-        
-        # Exit if no directory was selected
-        if ([string]::IsNullOrEmpty($selectedDir)) {
-            return
+
+            # Use FZF to let the user select a directory
+            $selectedDir = $allDirs | Out-String | fzf --reverse --preview "powershell -NoProfile -File $previewCmd {}"
+
+            # Clean up
+            Remove-Item -Path $previewCmd -Force
+
+            $selectedDir = $selectedDir.Trim()
+
+            # Exit if no directory was selected
+            if ([string]::IsNullOrEmpty($selectedDir)) {
+                return
+            }
+
+            # Change to the selected directory
+            Set-Location $selectedDir
         }
-        
-        # Change to the selected directory
-        Set-Location $selectedDir
     }
 }
 
