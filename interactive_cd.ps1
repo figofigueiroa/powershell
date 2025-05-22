@@ -84,3 +84,22 @@ function cd {
         Set-Location $dir
     }
 }
+
+function cd {
+    param([string[]]$args)
+    if ($args.Count -gt 0) {
+        Set-Location @args
+        return
+    }
+    while ($true) {
+        $dirs = "..", (Get-ChildItem -Directory | Select-Object -ExpandProperty Name)
+        $dir = $dirs | fzf --reverse --preview {
+            $previewPath = Join-Path (Get-Location) $_
+            Write-Host $previewPath
+            Write-Host
+            Get-ChildItem -Path $previewPath
+        }
+        if (-not $dir) { return }
+        Set-Location $dir
+    }
+}
